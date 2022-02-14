@@ -1,0 +1,75 @@
+PRE:
+* Can borrower borrow. Throw a server error if not
+  Data required:
+    - reservation.borrowerCompany
+    - reservation.vehicle
+    - reservation.includesDriverLabor
+  Fetches:
+    - Vehicle for borrowerRiskCalculator
+    - Company for borrowerRiskCalculator
+    - pricingTier in the calculator factory
+  Call stack:
+    - borrowerCanBorrow (handles error)
+      - generalMethods.borrowerCanBorrow (simple parameter wrapper from reservation to more specific)
+        - companyManager.canBorrowVehicle (Fetches _Vehicle_ in order to pass it to calculator constructor)
+          - manager.createBorrowerRiskCalculator (fetches _Company_)
+            - createBorrowerRiskCalculatorForCompanyData (fetch pricingTier)
+              - new BorrowerRiskCalculator
+          - calculator.canBorrowVehicle
+            - vehicle.borrowerCanBorrow
+* Charge adminMethods.chargeBorrowerInitial
+  Data required:
+    - reservation._id
+  Fetches:
+    - Latest reservation
+    - Latest statement (fetched twice)
+  Saves:
+    - sends transaction to stripe
+    - save PDFs
+    - save new Statement
+  Call stack:
+    - statementManager.fetchLatestForReservation ()
+      - makeFetchLatestForReservationFn()() wtf? (fetch latest _Statement_)
+    - statementManager.chargeBorrowerCompany
+      - makeChargeBorrowerCompanyFn()() (fetch _Statement_ again)
+        - stripFeeForCharge
+          - fetchStripeFactor (fetch _Settings_)
+          - strip.charge.create() (submits actual transaction to stripe, saves _Event_)
+    - statementManager.regenerateForReservation
+      - makeRegenerateForReservationFn (fetches _Reservation_)
+        - module.exports.fetchLatestForReservation (fetches _Statement_ and saves _Statement_)
+        - module.exports.fetchStripeTransactionsForReservation
+        - resManagerGeneral.generateLineItemInvoice lender
+          - generate PDF and upload to S3 (write side-effect)
+        - resManagerGeneral.generateLineItemInvoice borrower
+          - generate PDF and upload to S3 (write side-effect)
+        - resManagerGeneral.mathsForExtendedReservation
+        - resManagerGeneral.mathsForReservation
+          - calculator.calculateWithReservation
+            - DGraph and a bunch of fetches
+        - module.exports.transformLineItems lender (async for no reason?)
+        - module.exports.transformLineItems borrower (async for no reason?)
+        - create and save _Statement_
+
+POST:
+* Update vehicle replacement coverage terms
+  Data required:
+    - reservation
+    - lenderDidOptInToVehicleReplacementCoverage
+  Call stack:
+    - generalMethods.freezeRentalTerms
+      - fetch a few objects and then do DGraph
+      - update reservation in DB
+* Regenerate statement
+  Data required:
+    - reservation
+    - cause
+  Call stack:
+    - statementManager.regenerateForReservation (same as in pre-transition)
+* Revalidate borrower discounts
+* Decline pending conflicting reservation
+  Call Stack:
+    - generalMethods.createPendingConflictingReservationsQuery (creates a mongo query)
+    - execute query
+    - generalMethods.declineReservations
+
